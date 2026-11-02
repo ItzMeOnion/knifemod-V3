@@ -41,7 +41,7 @@ public final class KnifeState {
     /** Only works from an empty main hand, as requested. */
     public static void draw(PlayerInventory inv) {
         if (equipped == null || inHand) return;
-        if (!inv.getMainHandStack().isEmpty()) return;
+        if (!inv.getStack(inv.getSelectedSlot()).isEmpty()) return;
         heldSlot = inv.getSelectedSlot();
         savedStack = inv.getStack(heldSlot);
         place(inv, equipped);
