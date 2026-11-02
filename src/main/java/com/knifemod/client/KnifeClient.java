@@ -1,99 +1,51 @@
 package com.knifemod.client;
 
-import com.knifemod.KnifeDef;
-import com.knifemod.KnifeItems;
+import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.option.KeyBinding;
+import net.minecraft.client.util.InputUtil;
 import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.item.ItemStack;
+import org.lwjgl.glfw.GLFW;
 
-import java.util.ArrayList;
-import java.util.List;
+public class KnifeClient implements ClientModInitializer {
+    private static final String CATEGORY = "category.knifemod";
 
-/**
- * Client-side only. While a knife is "drawn", it sits in your selected hotbar slot on this
- * client, so the game's own first-person renderer shows it in your hand. The server is never
- * told, and the original stack is restored when you put the knife away.
- */
-public final class KnifeState {
-    public static final List<KnifeDef> OWNED = new ArrayList<>();
-    public static KnifeDef equipped;
+    private static KeyBinding openMenu;
+    private static KeyBinding drawKey;
+    private static KeyBinding inspectKey;
 
-    private static boolean inHand = false;
-    private static int heldSlot = -1;
-    private static ItemStack savedStack = ItemStack.EMPTY;
-    private static ItemStack heldStack = ItemStack.EMPTY;
-    private static KnifeDef heldKnife;
+    @Override
+    public void onInitializeClient() {
+        // All three are rebindable under Options -> Controls -> Knife Cases
+        openMenu = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+                "key.knifemod.open_menu", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_K, CATEGORY));
+        drawKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+                "key.knifemod.spin", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_G, CATEGORY));
+        inspectKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+                "key.knifemod.inspect", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_H, CATEGORY));
 
-    private KnifeState() {
+        ClientTickEvents.END_CLIENT_TICK.register(KnifeClient::tick);
     }
 
-    public static boolean isInHand() {
-        return inHand;
-    }
-
-    public static void toggle(PlayerInventory inv) {
-        if (inHand) {
-            putAway(inv);
-        } else {
-            draw(inv);
+    private static void tick(MinecraftClient client) {
+        while (openMenu.wasPressed()) {
+            client.setScreen(new CaseScreen());
         }
-    }
+        if (client.player == null) return;
 
-    /** Only works from an empty main hand, as requested. */
-    public static void draw(PlayerInventory inv) {
-        if (equipped == null || inHand) return;
-        if (!inv.getStack(inv.getSelectedSlot()).isEmpty()) return;
-        heldSlot = inv.getSelectedSlot();
-        savedStack = inv.getStack(heldSlot);
-        place(inv, equipped);
-        inHand = true;
-    }
+        PlayerInventory inv = client.player.getInventory();
+        KnifeState.tick(inv);
 
-    public static void putAway(PlayerInventory inv) {
-        if (inHand && heldSlot >= 0 && inv.getStack(heldSlot) == heldStack) {
-            inv.setStack(heldSlot, savedStack);
-        }
-        clear();
-    }
-
-    /** Call every client tick. */
-    public static void tick(PlayerInventory inv) {
-        if (!inHand) return;
-
-        // Player moved to another hotbar slot: put the knife back where it came from
-        if (inv.getSelectedSlot() != heldSlot) {
-            putAway(inv);
-            return;
+        // G: draw the equipped knife from an empty hand, or put it away
+        if (drawKey.wasPressed()) {
+            KnifeState.toggle(inv);
         }
 
-        // The server changed that slot (for example, it picked something up): stop holding the knife
-        if (inv.getStack(heldSlot) != heldStack) {
-            clear();
-            return;
+        // H: inspect. The inspect move is the next step; for now it also draws / puts away
+        if (inspectKey.wasPressed()) {
+            KnifeState.toggle(inv);
         }
-
-        // Switched which knife is equipped in the case menu: swap it in our hand
-        if (equipped != null && equipped != heldKnife) {
-            place(inv, equipped);
-        }
-    }
-
-    private static void place(PlayerInventory inv, KnifeDef knife) {
-        heldKnife = knife;
-        heldStack = KnifeItems.createStack(knife);
-        inv.setStack(heldSlot, heldStack);
-    }
-
-    private static void clear() {
-        inHand = false;
-        heldSlot = -1;
-        savedStack = ItemStack.EMPTY;
-        heldStack = ItemStack.EMPTY;
-        heldKnife = null;
-    }
-
-    public static void equipNext() {
-        if (OWNED.isEmpty()) return;
-        int i = OWNED.indexOf(equipped);
-        equipped = OWNED.get((i + 1) % OWNED.size());
     }
 }
